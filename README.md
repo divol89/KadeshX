@@ -1,6 +1,6 @@
 KadeshX: An Institutional-Grade Vesting Protocol for SPL Token-2022
 
-KadeshX is a high-integrity, non-custodial asset management framework engineered specifically for the Solana blockchain. This protocol serves as the immutable economic backbone of the KadeshX ecosystem, governing the temporal distribution of the 1,000,000,000 $KDX fixed supply through cryptographic enforcement.  
+KadeshX is a high-integrity, non-custodial asset management framework engineered specifically for the Solana blockchain. This protocol serves as the immutable economic backbone of the KadeshX ecosystem, governing the temporal distribution of the 1,000,000,000 $KX fixed supply through cryptographic enforcement.  
 📑 Protocol Abstract
 The KadeshX Vesting Protocol mitigates counterparty risk by leveraging Program Derived Addresses (PDA) to establish trustless escrow environments. It is designed to enforce rigorous financial compliance across various stakeholder tiers—including pre-sale participants, core team members, and ecosystem contributors—by codifying complex vesting schedules directly into the Solana runtime.  
 🌟 Architectural Core & Key Features
@@ -15,7 +15,7 @@ Transparency & Immutability: All vesting parameters are permanently recorded on 
 🛠 Technical Specifications
 Blockchain: Solana Mainnet-Beta  
 Framework: Anchor (Rust-based)  
-Maximum Supply: 1,000,000,000 $KDX (Hard-capped)  
+Maximum Supply: 1,000,000,000 $KX (Hard-capped)  
 Core Instructions: create_vesting, claim_tokens, burn_mechanism  
 📜 Local Development & Deployment
 To replicate the environment and execute the automated test suite, utilize the following instructions:  
@@ -35,4 +35,4 @@ Security Auditing: Assisting in the formal verification of the Rust distribution
 Ecosystem Expansion: Integrating dApp dashboards for real-time claim monitoring.  
 DAO Participation: Proposing and voting on protocol-level optimizations via $KDX governance.  
 📄 Legal Disclaimer & License
-This protocol is distributed under the MIT License. The $KDX Utility Token is strictly a "Service Token" utilized within the KadeshX platform and does not constitute a financial security or investment advice in any jurisdiction.
+This protocol is distributed under the MIT License. The $KX Utility Token is strictly a "Service Token" utilized within the KadeshX platform and does not constitute a financial security or investment advice in any jurisdiction.
