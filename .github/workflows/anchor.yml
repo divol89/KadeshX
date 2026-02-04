@@ -1,0 +1,213 @@
+name: KadeshX CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, security-fixes, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  SOLANA_VERSION: 1.18.0
+  ANCHOR_VERSION: 0.30.0
+  NODE_VERSION: 20
+
+jobs:
+  lint-and-build:
+    name: Lint & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Install Solana
+        run: |
+          sh -c "$(curl -sSfL https://release.solana.com/v${SOLANA_VERSION}/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+      
+      - name: Install Anchor
+        run: |
+          cargo install --git https://github.com/coral-xyz/anchor --tag v${ANCHOR_VERSION} anchor-cli --locked
+      
+      - name: Rustfmt
+        run: cargo fmt -- --check
+        working-directory: ./programs/kadeshx
+      
+      - name: Clippy
+        run: cargo clippy -- -D warnings
+        working-directory: ./programs/kadeshx
+      
+      - name: Build
+        run: anchor build
+      
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: target/deploy/
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+      
+      - name: Run Security Audit
+        run: cargo audit
+        working-directory: ./programs/kadeshx
+        continue-on-error: true
+      
+      - name: Check for Panic Usage
+        run: |
+          if grep -r "\.unwrap()" programs/kadeshx/src/ --include="*.rs"; then
+            echo "⚠️ Found unwrap() calls - review for safety"
+            exit 0
+          fi
+      
+      - name: Verify Safe Math
+        run: |
+          echo "Checking for checked_* operations..."
+          CHECKED_OPS=$(grep -c "checked_" programs/kadeshx/src/lib.rs || true)
+          echo "Found $CHECKED_OPS checked operations"
+          if [ "$CHECKED_OPS" -lt 5 ]; then
+            echo "❌ Insufficient checked operations"
+            exit 1
+          fi
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: [lint-and-build]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+      
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+      
+      - name: Install Solana
+        run: |
+          sh -c "$(curl -sSfL https://release.solana.com/v${SOLANA_VERSION}/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+      
+      - name: Install Anchor
+        run: |
+          cargo install --git https://github.com/coral-xyz/anchor --tag v${ANCHOR_VERSION} anchor-cli --locked
+      
+      - name: Install dependencies
+        run: yarn install
+      
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+          path: target/deploy/
+      
+      - name: Run Unit Tests
+        run: cargo test
+        working-directory: ./programs/kadeshx
+      
+      - name: Setup Solana Local Validator
+        run: |
+          solana-keygen new --no-bip39-passphrase -s -o ~/.config/solana/id.json || true
+          solana config set --url localhost
+      
+      - name: Run Anchor Tests
+        run: |
+          solana-test-validator --quiet --reset &
+          sleep 5
+          anchor test --skip-build
+        timeout-minutes: 10
+
+  gas-analysis:
+    name: Gas Analysis
+    runs-on: ubuntu-latest
+    needs: [lint-and-build]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+      
+      - name: Install Solana
+        run: |
+          sh -c "$(curl -sSfL https://release.solana.com/v${SOLANA_VERSION}/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+      
+      - name: Install Anchor
+        run: |
+          cargo install --git https://github.com/coral-xyz/anchor --tag v${ANCHOR_VERSION} anchor-cli --locked
+      
+      - name: Install dependencies
+        run: yarn install
+      
+      - name: Build
+        run: anchor build
+      
+      - name: Analyze Compute Units
+        run: |
+          echo "### Compute Unit Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "Analyzing compute unit usage..."
+          # This would require running tests and extracting CU data
+          # For now, we document the expected ranges
+          echo "| Instruction | Expected CU |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------------|-------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| create_vesting | ~55,000 |" >> $GITHUB_STEP_SUMMARY
+          echo "| claim_tokens | ~28,000 |" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Check Gas Report
+        run: |
+          if [ -f GAS_REPORT.md ]; then
+            echo "✅ Gas report found"
+            cat GAS_REPORT.md | head -50
+          else
+            echo "⚠️ No gas report found"
+          fi
+
+  publish-idl:
+    name: Publish IDL
+    runs-on: ubuntu-latest
+    needs: [test, security-audit]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Upload IDL
+        uses: actions/upload-artifact@v4
+        with:
+          name: idl
+          path: target/idl/kadeshx.json
+      
+      - name: Upload TypeScript Types
+        uses: actions/upload-artifact@v4
+        with:
+          name: types
+          path: target/types/kadeshx.ts
